@@ -63,6 +63,41 @@ def health():
     })
 
 
+
+# ---------------- query expansion ----------------
+def expand_query(raw: str) -> str:
+    """Use Claude to expand a short/vague keyword into a richer job search phrase.
+    Falls back to the original keyword if LLM is unavailable or fails.
+    e.g. "Tax"       -> "taxation finance GST accountant"
+         "ML"        -> "machine learning AI deep learning engineer"
+         "React dev" -> "React frontend developer JavaScript"
+    """
+    client = get_anthropic()
+    if client is None:
+        return raw
+
+    system = (
+        "You are a job search query optimizer. "
+        "Given a short or vague keyword, return a concise expanded search phrase "
+        "(4-8 words) that will find the most relevant job postings. "
+        "Include common synonyms, related roles, and relevant skills. "
+        "Return ONLY the expanded phrase — no explanation, no punctuation, no quotes."
+    )
+    try:
+        msg = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=40,
+            system=system,
+            messages=[{"role": "user", "content": f"Keyword: {raw}"}],
+        )
+        expanded = "".join(
+            b.text for b in msg.content if getattr(b, "type", "") == "text"
+        ).strip()
+        return expanded if expanded else raw
+    except Exception:
+        return raw  # graceful fallback — never break search
+
+
 # ---------------- /api/search ----------------
 @app.route("/api/search", methods=["POST"])
 def search_jobs():
@@ -79,7 +114,9 @@ def search_jobs():
     employment_types = "FULLTIME"
     date_posted      = "3days"  # closest native option; trimmed to <=48h below
 
-    query_string = (keywords if keywords else "jobs") + f" in {location}"
+    # LLM query expansion — expand short/vague keywords into richer job search terms
+    expanded_keywords = expand_query(keywords) if keywords else "jobs"
+    query_string = expanded_keywords + f" in {location}"
 
     params = {
         "query": query_string,
@@ -162,7 +199,7 @@ def search_jobs():
             "publisher": j.get("job_publisher"),
         })
 
-    return jsonify({"jobs": slim, "page": page, "count": len(slim)})
+    return jsonify({"jobs": slim, "page": page, "count": len(slim), "expanded_query": expanded_keywords})
 
 
 # ---------------- /api/resume/upload ----------------
