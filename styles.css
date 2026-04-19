@@ -542,6 +542,7 @@ html, body {
   padding: 20px;
   animation: fadeIn .2s ease;
 }
+.modal-scrim[hidden] { display: none !important; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .modal {
   position: relative;
