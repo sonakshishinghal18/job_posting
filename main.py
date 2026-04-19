@@ -24,8 +24,12 @@ app.add_middleware(
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-# Resolve frontend/dist relative to repo root (one level above backend/)
+# Resolve frontend/dist relative to repo root
+# __file__ is at <repo>/backend/main.py, so go up one level to reach repo root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Render clones into /opt/render/project/src — handle both local and Render paths
+if not os.path.exists(os.path.join(BASE_DIR, "frontend")):
+    BASE_DIR = os.path.join(BASE_DIR, "src")
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 
 print(f"Looking for frontend at: {FRONTEND_DIR}")
