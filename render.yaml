@@ -1,0 +1,28 @@
+services:
+  # --- Backend (FastAPI) ---
+  - type: web
+    name: job-platform-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # Set manually in Render dashboard
+      - key: ALLOWED_ORIGINS
+        value: https://job-platform-web.onrender.com
+
+  # --- Frontend (React/Vite) ---
+  - type: web
+    name: job-platform-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://job-platform-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
