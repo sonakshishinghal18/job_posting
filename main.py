@@ -24,6 +24,13 @@ app.add_middleware(
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+# Resolve frontend/dist relative to repo root (one level above backend/)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRONTEND_DIR = os.path.join(BASE_DIR, "frontend", "dist")
+
+print(f"Looking for frontend at: {FRONTEND_DIR}")
+print(f"Frontend exists: {os.path.exists(FRONTEND_DIR)}")
+
 
 # ---------- Models ----------
 
@@ -46,7 +53,7 @@ class JobPostRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "frontend_dir": FRONTEND_DIR, "frontend_exists": os.path.exists(FRONTEND_DIR)}
 
 
 @app.get("/api/jobs")
@@ -59,7 +66,6 @@ def get_jobs(
     q: Optional[str] = Query(None),
     sort: Optional[str] = Query("recent"),
 ):
-    """Return filtered job listings."""
     jobs = list(MOCK_JOBS)
 
     if field:
@@ -101,7 +107,6 @@ def get_jobs(
 
 @app.post("/api/ai-search")
 def ai_search(body: AISearchRequest):
-    """Use Claude to parse a natural language job search query."""
     if not body.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
@@ -169,7 +174,6 @@ Valid job_type values: Full-time, Contract, Freelance, Internship"""
 
 @app.post("/api/jobs", status_code=201)
 def post_job(body: JobPostRequest):
-    """Submit a new job posting."""
     new_job = {
         "id": max(j["id"] for j in MOCK_JOBS) + 1,
         "title": body.title,
@@ -191,10 +195,10 @@ def post_job(body: JobPostRequest):
 
 # ---------- Serve React frontend (must be last) ----------
 
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "../frontend/dist")
-
 if os.path.exists(FRONTEND_DIR):
-    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+    assets_dir = os.path.join(FRONTEND_DIR, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     @app.get("/")
     def serve_root():
@@ -206,3 +210,7 @@ if os.path.exists(FRONTEND_DIR):
         if os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+else:
+    @app.get("/")
+    def serve_root_fallback():
+        return {"error": f"Frontend not built. Expected at: {FRONTEND_DIR}"}
