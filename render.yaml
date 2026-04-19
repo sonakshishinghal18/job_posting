@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: lumen-jobsearch
+    runtime: python
+    plan: free                    # change to 'starter' ($7/mo) to keep it from sleeping
+    region: singapore             # closest to Bangalore; alternatives: oregon, frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    healthCheckPath: /api/health
+    envVars:
+      - key: RAPIDAPI_KEY
+        sync: false               # set manually in Render dashboard (secret)
+      - key: ANTHROPIC_API_KEY
+        sync: false               # set manually in Render dashboard (secret)
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-4-6
+      - key: PYTHON_VERSION
+        value: 3.12.4
