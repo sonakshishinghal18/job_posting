@@ -38,7 +38,10 @@ def get_anthropic():
     if _anthropic_client is None:
         if not ANTHROPIC_KEY:
             return None
-        _anthropic_client = Anthropic(api_key=ANTHROPIC_KEY)
+        try:
+            _anthropic_client = Anthropic(api_key=ANTHROPIC_KEY)
+        except Exception:
+            return None
     return _anthropic_client
 
 
@@ -101,6 +104,13 @@ def expand_query(raw: str) -> str:
 # ---------------- /api/search ----------------
 @app.route("/api/search", methods=["POST"])
 def search_jobs():
+    try:
+        return _do_search()
+    except Exception as e:
+        return jsonify({"error": f"Search failed: {e}"}), 500
+
+
+def _do_search():
     if not RAPIDAPI_KEY:
         return jsonify({"error": "RAPIDAPI_KEY is not set on the server."}), 500
 
@@ -115,7 +125,11 @@ def search_jobs():
     date_posted      = "3days"  # closest native option; trimmed to <=48h below
 
     # LLM query expansion — expand short/vague keywords into richer job search terms
-    expanded_keywords = expand_query(keywords) if keywords else "jobs"
+    # Wrapped in extra try/except so search NEVER fails due to LLM issues
+    try:
+        expanded_keywords = expand_query(keywords) if keywords else keywords or "jobs"
+    except Exception:
+        expanded_keywords = keywords or "jobs"
     query_string = expanded_keywords + f" in {location}"
 
     params = {
