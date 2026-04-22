@@ -141,7 +141,7 @@ def debug_apify():
         "position": "1", "pageNum": "0",
     })
     run_input = {
-        "urls": [{"url": test_url}],
+        "urls": [test_url],
         "count": 5,
         "scrapeCompany": False,
         "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
@@ -257,7 +257,7 @@ def _build_linkedin_url(keywords, experience, loc):
 def _fetch_apify(keywords, experience, loc):
     url = _build_linkedin_url(keywords, experience, loc)
     run_input = {
-        "urls": [{"url": url}],
+        "urls": [url],
         "count": 50,
         "scrapeCompany": False,
         "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
