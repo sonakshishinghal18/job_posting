@@ -28,8 +28,9 @@ CLAUDE_MODEL  = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6").strip()
 
 RAPIDAPI_HOST = "jsearch.p.rapidapi.com"
 JSEARCH_URL   = f"https://{RAPIDAPI_HOST}/search"
-APIFY_ACTOR   = "curious_coder~linkedin-jobs-scraper"
-APIFY_URL     = f"https://api.apify.com/v2/acts/{APIFY_ACTOR}/run-sync-get-dataset-items"
+APIFY_ACTOR    = "curious_coder~linkedin-jobs-scraper"
+APIFY_RUN_URL  = f"https://api.apify.com/v2/acts/{APIFY_ACTOR}/runs"
+APIFY_BASE_URL = "https://api.apify.com/v2"
 
 # Location configs
 LOCATIONS = {
@@ -90,7 +91,7 @@ def debug_apify():
         "pageNum": "0",
     })
     run_input = {
-        "startUrls": [{"url": test_url}],
+        "urls": [{"url": test_url}],
         "count": 5,
         "scrapeCompany": False,
         "proxy": {
@@ -262,7 +263,7 @@ def _build_linkedin_url(keywords, experience, loc):
 def _fetch_apify(keywords, experience, loc):
     url = _build_linkedin_url(keywords, experience, loc)
     run_input = {
-        "startUrls": [{"url": url}],
+        "urls": [{"url": url}],
         "count": 50,
         "scrapeCompany": False,   # faster without company details
         "proxy": {
