@@ -26,16 +26,15 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 APIFY_TOKEN   = os.getenv("APIFY_TOKEN", "").strip()
 CLAUDE_MODEL  = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6").strip()
 
-RAPIDAPI_HOST = "jsearch.p.rapidapi.com"
-JSEARCH_URL   = f"https://{RAPIDAPI_HOST}/search"
+RAPIDAPI_HOST  = "jsearch.p.rapidapi.com"
+JSEARCH_URL    = f"https://{RAPIDAPI_HOST}/search"
 APIFY_ACTOR    = "curious_coder~linkedin-jobs-scraper"
 APIFY_RUN_URL  = f"https://api.apify.com/v2/acts/{APIFY_ACTOR}/runs"
 APIFY_BASE_URL = "https://api.apify.com/v2"
 
-# Location configs
 LOCATIONS = {
-    "bangalore": {"apify": "Bangalore, Karnataka, India", "li": "Bengaluru+Metropolitan+Area", "jsearch": "Bangalore, India", "country": "in"},
-    "delhi":     {"apify": "Delhi, India",                "li": "Delhi%2C+India",               "jsearch": "Delhi NCR, India",  "country": "in"},
+    "bangalore": {"apify": "Bangalore, Karnataka, India", "jsearch": "Bangalore, India", "country": "in"},
+    "delhi":     {"apify": "Delhi, India",                "jsearch": "Delhi NCR, India",  "country": "in"},
 }
 
 app = Flask(__name__, static_folder=BASE_DIR, static_url_path="")
@@ -71,76 +70,88 @@ def index():
 def static_files(path):
     return send_from_directory(BASE_DIR, path)
 
+@app.route("/api/health")
+def health():
+    return jsonify({"status": "ok", "apify": bool(APIFY_TOKEN),
+                    "jsearch": bool(RAPIDAPI_KEY), "llm": bool(ANTHROPIC_KEY)})
 
+
+# ====================================================================
+#  CORE APIFY HELPER — start run, poll, fetch dataset
+# ====================================================================
+def _apify_run_and_fetch(run_input, max_wait=110):
+    """Start an Apify run, poll until finished, return dataset items."""
+    params = {"token": APIFY_TOKEN}
+    headers = {"Content-Type": "application/json"}
+
+    # Step 1: Start the run
+    r = http_requests.post(APIFY_RUN_URL, params=params, json=run_input,
+                           headers=headers, timeout=30)
+    r.raise_for_status()
+    run_data = r.json().get("data", {})
+    run_id = run_data.get("id")
+    if not run_id:
+        raise ValueError(f"No run ID returned: {str(r.json())[:200]}")
+    log.info(f"Apify run started: {run_id}")
+
+    # Step 2: Poll until SUCCEEDED or FAILED
+    status_url = f"{APIFY_BASE_URL}/actor-runs/{run_id}"
+    deadline = time.time() + max_wait
+    last_status = "RUNNING"
+    last_sr = None
+    while time.time() < deadline:
+        time.sleep(5)
+        sr = http_requests.get(status_url, params=params, timeout=15)
+        sr.raise_for_status()
+        last_sr = sr
+        last_status = sr.json().get("data", {}).get("status", "")
+        log.info(f"Apify run {run_id}: {last_status}")
+        if last_status == "SUCCEEDED":
+            break
+        if last_status in ("FAILED", "ABORTED", "TIMED-OUT"):
+            raise RuntimeError(f"Run {last_status}: {run_id}")
+    else:
+        raise TimeoutError(f"Apify run timed out after {max_wait}s")
+
+    # Step 3: Fetch dataset items
+    dataset_id = last_sr.json().get("data", {}).get("defaultDatasetId")
+    if not dataset_id:
+        raise ValueError("No dataset ID in run response")
+    dr = http_requests.get(f"{APIFY_BASE_URL}/datasets/{dataset_id}/items",
+                           params={**params, "limit": 50}, timeout=30)
+    dr.raise_for_status()
+    items = dr.json()
+    log.info(f"Apify dataset: {len(items) if isinstance(items, list) else 'non-list'} items")
+    return items if isinstance(items, list) else []
+
+
+# ====================================================================
+#  DEBUG ENDPOINT
+# ====================================================================
 @app.route("/api/debug/apify")
 def debug_apify():
-    """Diagnostic endpoint — calls Apify directly and returns raw info.
-    Hit this in your browser: /api/debug/apify
-    """
     if not APIFY_TOKEN:
         return jsonify({"error": "APIFY_TOKEN not set"}), 500
-
-    # Build a simple LinkedIn search URL for Bangalore software engineers (7 days for debug)
     import urllib.parse
     test_url = "https://www.linkedin.com/jobs/search/?" + urllib.parse.urlencode({
         "keywords": "software engineer",
         "location": "Bangalore, Karnataka, India",
-        "f_TPR": "r604800",
+        "f_TPR": "r604800",  # 7 days for debug
         "f_JT": "F",
-        "position": "1",
-        "pageNum": "0",
+        "position": "1", "pageNum": "0",
     })
     run_input = {
         "urls": [{"url": test_url}],
         "count": 5,
         "scrapeCompany": False,
-        "proxy": {
-            "useApifyProxy": True,
-            "apifyProxyGroups": ["RESIDENTIAL"],
-        },
+        "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
     }
-
     try:
-        log.info("Debug: calling Apify…")
-        r = http_requests.post(
-            APIFY_RUN_URL,
-            params={"token": APIFY_TOKEN},
-            json=run_input,
-            headers={"Content-Type": "application/json"},
-            timeout=120,
-        )
-        status_code = r.status_code
-        try:
-            body = r.json()
-        except Exception:
-            body = r.text[:2000]
-
-        # If it's a list, summarise each item's keys so we can see the schema
-        if isinstance(body, list):
-            count = len(body)
-            sample = body[:2] if body else []
-            # Show all keys present in first item
-            keys = list(body[0].keys()) if body else []
-            return jsonify({
-                "ok": True,
-                "http_status": status_code,
-                "result_count": count,
-                "field_names": keys,
-                "first_2_jobs": sample,
-            })
-        else:
-            return jsonify({
-                "ok": False,
-                "http_status": status_code,
-                "raw_response": body,
-            })
-
+        jobs = _apify_run_and_fetch(run_input)
+        keys = list(jobs[0].keys()) if jobs else []
+        return jsonify({"ok": True, "count": len(jobs), "field_names": keys, "sample": jobs[:2]})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-
-@app.route("/api/health")
-def health():
-    return jsonify({"status": "ok", "apify": bool(APIFY_TOKEN), "jsearch": bool(RAPIDAPI_KEY), "llm": bool(ANTHROPIC_KEY)})
 
 
 # ====================================================================
@@ -194,18 +205,10 @@ def _do_search():
     except Exception:
         expanded_keywords = keywords or "jobs"
 
-    # Determine which locations to search
-    if location == "both":
-        locs = ["bangalore", "delhi"]
-    elif location in LOCATIONS:
-        locs = [location]
-    else:
-        locs = ["bangalore"]
+    locs = ["bangalore", "delhi"] if location == "both" else [location if location in LOCATIONS else "bangalore"]
 
     all_jobs = []
-
     for loc in locs:
-        # --- Apify primary ---
         if APIFY_TOKEN:
             jobs, err = _fetch_apify(expanded_keywords, experience, loc)
             if jobs:
@@ -213,8 +216,6 @@ def _do_search():
                 continue
             if err:
                 log.warning(f"Apify ({loc}): {err}")
-
-        # --- JSearch fallback ---
         if RAPIDAPI_KEY:
             jobs, err = _fetch_jsearch(expanded_keywords, experience, page, loc)
             if jobs:
@@ -226,110 +227,78 @@ def _do_search():
     if not APIFY_TOKEN and not RAPIDAPI_KEY:
         return jsonify({"error": "No job API configured."}), 500
 
-    # Cap at 50
-    all_jobs = all_jobs[:50]
-    source = "linkedin" if APIFY_TOKEN else "jsearch"
-
     return jsonify({
-        "jobs": all_jobs,
+        "jobs": all_jobs[:50],
         "page": page,
-        "count": len(all_jobs),
-        "source": source,
+        "count": len(all_jobs[:50]),
+        "source": "linkedin" if APIFY_TOKEN else "jsearch",
         "expanded_query": expanded_keywords,
     })
 
 
 # ------------------------------------------------------------------
-#  Apify — curious_coder/linkedin-jobs-scraper
-#  Takes LinkedIn search URLs directly — most reliable approach
+#  Apify
 # ------------------------------------------------------------------
 def _build_linkedin_url(keywords, experience, loc):
-    """Build a LinkedIn jobs search URL with all filters baked in."""
     import urllib.parse
     loc_cfg = LOCATIONS.get(loc, LOCATIONS["bangalore"])
-
-    # LinkedIn filter codes
-    # f_TPR: time posted (r172800 = 48h)
-    # f_JT:  job type (F = full-time)
-    # f_E:   experience level (1=internship,2=entry,3=associate,4=mid-senior,5=director,6=executive)
     params = {
         "keywords": keywords,
         "location": loc_cfg["apify"],
-        "f_TPR": "r172800",
+        "f_TPR": "r172800",  # 48 hours
         "f_JT": "F",
-        "position": "1",
-        "pageNum": "0",
+        "position": "1", "pageNum": "0",
     }
     exp_map = {"entry": "2", "mid": "4", "senior": "4", "executive": "5,6"}
     if experience in exp_map:
         params["f_E"] = exp_map[experience]
-
-    base = "https://www.linkedin.com/jobs/search/?"
-    return base + urllib.parse.urlencode(params)
-
+    return "https://www.linkedin.com/jobs/search/?" + urllib.parse.urlencode(params)
 
 def _fetch_apify(keywords, experience, loc):
     url = _build_linkedin_url(keywords, experience, loc)
     run_input = {
         "urls": [{"url": url}],
         "count": 50,
-        "scrapeCompany": False,   # faster without company details
-        "proxy": {
-            "useApifyProxy": True,
-            "apifyProxyGroups": ["RESIDENTIAL"],
-        },
+        "scrapeCompany": False,
+        "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
     }
+    log.info(f"Apify: '{keywords}' in {loc} — {url}")
     try:
-        log.info(f"Apify curious_coder: '{keywords}' in {loc}")
-        log.info(f"LinkedIn URL: {url}")
-        r = http_requests.post(
-            APIFY_RUN_URL,
-            params={"token": APIFY_TOKEN},
-            json=run_input,
-            headers={"Content-Type": "application/json"},
-            timeout=120,
-        )
-        r.raise_for_status()
-        jobs = r.json()
-        log.info(f"Apify returned {len(jobs) if isinstance(jobs, list) else 'non-list'} results")
-        return (jobs, None) if isinstance(jobs, list) else ([], f"Bad format: {str(jobs)[:200]}")
+        jobs = _apify_run_and_fetch(run_input)
+        return jobs, None
     except Exception as e:
         return [], str(e)
 
 def _normalize_apify(jobs, experience, loc):
-    slim = []
+    from datetime import datetime
+    slim, city = [], "Delhi NCR" if loc == "delhi" else "Bangalore"
     for j in jobs:
-        title = j.get("title") or j.get("jobTitle") or ""
-        company = j.get("companyName") or j.get("company") or ""
+        title       = j.get("title") or j.get("jobTitle") or ""
+        company     = j.get("companyName") or j.get("company") or ""
         description = j.get("description") or j.get("descriptionText") or ""
-        apply_link = j.get("link") or j.get("jobUrl") or j.get("url") or ""
-        posted_at = j.get("publishedAt") or j.get("postedAt") or j.get("postedTime") or ""
-        job_id = j.get("id") or j.get("jobId") or hashlib.md5(f"{title}:{company}:{apply_link}".encode()).hexdigest()[:12]
+        apply_link  = j.get("link") or j.get("jobUrl") or j.get("url") or ""
+        posted_at   = j.get("publishedAt") or j.get("postedAt") or j.get("postedTime") or ""
+        job_id      = j.get("id") or j.get("jobId") or hashlib.md5(f"{title}:{company}:{apply_link}".encode()).hexdigest()[:12]
 
         posted_ts = None
         if posted_at:
-            from datetime import datetime
             for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
                 try:
-                    posted_ts = datetime.strptime(posted_at, fmt).timestamp()
-                    break
+                    posted_ts = datetime.strptime(posted_at, fmt).timestamp(); break
                 except ValueError:
                     continue
 
         highlights = {}
         if description:
             short = [l.strip() for l in description.split("\n") if l.strip() and 3 <= len(l.split()) <= 6]
-            if short:
-                highlights["Qualifications"] = short[:8]
-
-        is_remote = "remote" in (j.get("location") or "").lower() or "remote" in title.lower()
-        city = "Delhi NCR" if loc == "delhi" else "Bangalore"
+            if short: highlights["Qualifications"] = short[:8]
 
         slim.append({
             "id": job_id, "title": title, "employer": company,
             "employer_logo": j.get("companyLogo") or j.get("imgUrl") or "",
             "employment_type": "FULLTIME", "city": city, "state": "", "country": "IN",
-            "is_remote": is_remote, "posted_at": posted_at, "posted_ts": posted_ts,
+            "is_remote": "remote" in (j.get("location") or "").lower() or "remote" in title.lower(),
+            "posted_at": posted_at, "posted_ts": posted_ts,
             "apply_link": apply_link, "description": description, "highlights": highlights,
             "salary_min": j.get("salary") or j.get("salaryMin"), "salary_max": j.get("salaryMax"),
             "salary_currency": "INR", "salary_period": j.get("salaryPeriod"), "publisher": "LinkedIn",
@@ -337,7 +306,7 @@ def _normalize_apify(jobs, experience, loc):
 
     if experience in ("senior", "executive"):
         needle = "senior" if experience == "senior" else "lead"
-        slim = [s for s in slim if needle in (s["title"]).lower() or needle in (s["description"])[:400].lower()]
+        slim = [s for s in slim if needle in s["title"].lower() or needle in (s["description"] or "")[:400].lower()]
     return slim
 
 
@@ -356,7 +325,8 @@ def _fetch_jsearch(keywords, experience, page, loc):
     if experience in exp_map:
         params["job_requirements"] = exp_map[experience]
     try:
-        r = http_requests.get(JSEARCH_URL, headers={"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": RAPIDAPI_HOST},
+        r = http_requests.get(JSEARCH_URL,
+                              headers={"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": RAPIDAPI_HOST},
                               params=params, timeout=25)
         r.raise_for_status()
         return r.json().get("data", []) or [], None
@@ -364,12 +334,12 @@ def _fetch_jsearch(keywords, experience, page, loc):
         return [], str(e)
 
 def _normalize_jsearch(jobs, experience):
-    now = time.time()
-    two_days = 48 * 3600
+    now, two_days = time.time(), 48 * 3600
     jobs = [j for j in jobs if _within_48h(j, now, two_days)]
     if experience in ("senior", "executive"):
         needle = "senior" if experience == "senior" else "lead"
-        jobs = [j for j in jobs if needle in (j.get("job_title") or "").lower() or needle in (j.get("job_description") or "").lower()[:400]]
+        jobs = [j for j in jobs if needle in (j.get("job_title") or "").lower()
+                or needle in (j.get("job_description") or "").lower()[:400]]
     return [{
         "id": j.get("job_id"), "title": j.get("job_title"), "employer": j.get("employer_name"),
         "employer_logo": j.get("employer_logo"), "employment_type": j.get("job_employment_type"),
@@ -426,11 +396,9 @@ def upload_resume():
 @app.route("/api/extract", methods=["POST"])
 def extract_skills():
     client = get_anthropic()
-    if not client:
-        return jsonify({"error": "LLM not configured."}), 500
+    if not client: return jsonify({"error": "LLM not configured."}), 500
     desc = ((request.get_json(silent=True) or {}).get("description") or "").strip()[:12000]
-    if not desc:
-        return jsonify({"error": "No description."}), 400
+    if not desc: return jsonify({"error": "No description."}), 400
     try:
         msg = client.messages.create(model=CLAUDE_MODEL, max_tokens=600,
             system='Extract skills from job descriptions. Return ONLY valid JSON: {"required": [...], "nice_to_have": [...]}. Max 3 words per skill, max 12 each.',
@@ -449,14 +417,12 @@ def extract_skills():
 @app.route("/api/match", methods=["POST"])
 def match_resume():
     client = get_anthropic()
-    if not client:
-        return jsonify({"error": "LLM not configured."}), 500
+    if not client: return jsonify({"error": "LLM not configured."}), 500
     body = request.get_json(silent=True) or {}
     resume = (body.get("resume") or "").strip()[:15000]
     desc = (body.get("description") or "").strip()[:12000]
     title = (body.get("title") or "").strip()
-    if not resume or not desc:
-        return jsonify({"error": "Resume and description required."}), 400
+    if not resume or not desc: return jsonify({"error": "Resume and description required."}), 400
     try:
         msg = client.messages.create(model=CLAUDE_MODEL, max_tokens=900,
             system='Expert recruiter. Compare resume to job. Return ONLY JSON: {"score": 0-100, "verdict": "one sentence", "matched": [...], "missing": [...], "reasoning": "2-3 sentences"}. 80+=strong, 60-79=worth applying, 40-59=stretch, <40=weak. Max 8 items each.',
@@ -472,29 +438,20 @@ def match_resume():
 
 
 # ====================================================================
-#  LLM: REWRITE EXPERIENCE FOR A JOB
+#  LLM: REWRITE EXPERIENCE
 # ====================================================================
 @app.route("/api/rewrite", methods=["POST"])
 def rewrite_resume():
     client = get_anthropic()
-    if not client:
-        return jsonify({"error": "LLM not configured."}), 500
+    if not client: return jsonify({"error": "LLM not configured."}), 500
     body = request.get_json(silent=True) or {}
     resume = (body.get("resume") or "").strip()[:15000]
     desc = (body.get("description") or "").strip()[:12000]
     title = (body.get("title") or "").strip()
-    if not resume or not desc:
-        return jsonify({"error": "Resume and description required."}), 400
+    if not resume or not desc: return jsonify({"error": "Resume and description required."}), 400
     try:
         msg = client.messages.create(model=CLAUDE_MODEL, max_tokens=2000,
-            system=(
-                "You are a professional resume writer. Rewrite the candidate's experience section "
-                "to be highly tailored for the specific job. Use keywords from the job description. "
-                "Make bullet points achievement-oriented with metrics where possible. "
-                "Keep the same jobs/roles but reframe accomplishments to align with the role. "
-                "Return ONLY the rewritten experience section — no preamble, no explanation. "
-                "Format as clean text with role headings and bullet points."
-            ),
+            system="You are a professional resume writer. Rewrite the candidate's experience section to be highly tailored for the specific job. Use keywords from the job description. Make bullet points achievement-oriented with metrics where possible. Keep the same jobs/roles but reframe accomplishments to align with the role. Return ONLY the rewritten experience section — no preamble, no explanation. Format as clean text with role headings and bullet points.",
             messages=[{"role": "user", "content": f"TARGET JOB: {title}\n\nJOB DESCRIPTION:\n{desc}\n\nMY RESUME:\n{resume}\n\nRewrite my experience section now."}])
         rewritten = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
     except Exception as e:
@@ -503,48 +460,27 @@ def rewrite_resume():
 
 
 # ====================================================================
-#  LLM: BATCH SCORE (top 15 jobs)
+#  LLM: BATCH SCORE
 # ====================================================================
 @app.route("/api/batch-score", methods=["POST"])
 def batch_score():
     client = get_anthropic()
-    if not client:
-        return jsonify({"error": "LLM not configured."}), 500
+    if not client: return jsonify({"error": "LLM not configured."}), 500
     body = request.get_json(silent=True) or {}
     resume = (body.get("resume") or "").strip()[:10000]
     jobs = (body.get("jobs") or [])[:15]
-    if not resume or not jobs:
-        return jsonify({"error": "Resume and jobs required."}), 400
-
-    # Build a compact job list for the prompt
-    job_list = "\n".join(
-        f'[{i}] "{j.get("title","")} at {j.get("employer","")}" — {(j.get("description",""))[:200]}'
-        for i, j in enumerate(jobs)
-    )
+    if not resume or not jobs: return jsonify({"error": "Resume and jobs required."}), 400
+    job_list = "\n".join(f'[{i}] "{j.get("title","")} at {j.get("employer","")}" — {(j.get("description",""))[:200]}' for i, j in enumerate(jobs))
     try:
         msg = client.messages.create(model=CLAUDE_MODEL, max_tokens=600,
-            system=(
-                "Score how well a resume matches each job. Return ONLY a JSON array of objects: "
-                '[{"index": 0, "score": 0-100}, ...]. '
-                "One object per job. Score honestly: 80+=strong, 60-79=decent, 40-59=stretch, <40=weak. "
-                "No explanation, just the array."
-            ),
+            system='Score how well a resume matches each job. Return ONLY a JSON array: [{"index": 0, "score": 0-100}, ...]. One object per job. No explanation.',
             messages=[{"role": "user", "content": f"RESUME:\n{resume}\n\nJOBS:\n{job_list}\n\nReturn JSON array now."}])
-        raw = _strip_fences("".join(b.text for b in msg.content if getattr(b, "type", "") == "text"))
-        scores = json.loads(raw)
+        scores = json.loads(_strip_fences("".join(b.text for b in msg.content if getattr(b, "type", "") == "text")))
     except json.JSONDecodeError:
         return jsonify({"error": "Invalid LLM JSON."}), 502
     except Exception as e:
         return jsonify({"error": f"LLM failed: {e}"}), 502
-
-    # Normalize to dict { job_index: score }
-    result = {}
-    if isinstance(scores, list):
-        for item in scores:
-            idx = item.get("index")
-            sc = item.get("score", 0)
-            if idx is not None:
-                result[str(idx)] = max(0, min(100, int(sc)))
+    result = {str(item.get("index")): max(0, min(100, int(item.get("score", 0)))) for item in (scores if isinstance(scores, list) else []) if item.get("index") is not None}
     return jsonify({"scores": result})
 
 
