@@ -152,8 +152,16 @@ def expand_query(raw):
         return raw
     try:
         msg = client.messages.create(
-            model=CLAUDE_MODEL, max_tokens=40,
-            system="You are a job search query optimizer. Given a short keyword, return a concise expanded phrase (4-8 words) with synonyms and related roles. Return ONLY the phrase — no explanation, no quotes.",
+            model=CLAUDE_MODEL, max_tokens=60,
+            system=(
+                "You are a LinkedIn job search expert. Given any keyword, return a broader "
+                "search phrase using OR logic to catch more relevant jobs. "
+                "Format: 'term1 OR term2 OR term3' (3-5 terms max). "
+                "Examples: 'tax' -> 'tax OR taxation OR GST OR accountant', "
+                "'ML' -> 'machine learning OR deep learning OR AI engineer', "
+                "'React' -> 'React OR frontend developer OR UI engineer'. "
+                "Return ONLY the phrase — no explanation, no quotes, no punctuation."
+            ),
             messages=[{"role": "user", "content": f"Keyword: {raw}"}],
         )
         expanded = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
