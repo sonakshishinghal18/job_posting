@@ -103,7 +103,7 @@ def debug_apify():
     try:
         log.info("Debug: calling Apify…")
         r = http_requests.post(
-            APIFY_URL,
+            APIFY_RUN_URL,
             params={"token": APIFY_TOKEN},
             json=run_input,
             headers={"Content-Type": "application/json"},
@@ -283,7 +283,7 @@ def _fetch_apify(keywords, experience, loc):
         log.info(f"Apify curious_coder: '{keywords}' in {loc}")
         log.info(f"LinkedIn URL: {url}")
         r = http_requests.post(
-            APIFY_URL,
+            APIFY_RUN_URL,
             params={"token": APIFY_TOKEN},
             json=run_input,
             headers={"Content-Type": "application/json"},
