@@ -28,13 +28,13 @@ CLAUDE_MODEL  = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6").strip()
 
 RAPIDAPI_HOST = "jsearch.p.rapidapi.com"
 JSEARCH_URL   = f"https://{RAPIDAPI_HOST}/search"
-APIFY_ACTOR   = "bebity~linkedin-jobs-scraper"
+APIFY_ACTOR   = "curious_coder~linkedin-jobs-scraper"
 APIFY_URL     = f"https://api.apify.com/v2/acts/{APIFY_ACTOR}/run-sync-get-dataset-items"
 
 # Location configs
 LOCATIONS = {
-    "bangalore": {"apify": "BANGALORE", "jsearch": "Bangalore, India", "country": "in"},
-    "delhi":     {"apify": "DELHI NCR",  "jsearch": "Delhi NCR, India",  "country": "in"},
+    "bangalore": {"apify": "Bangalore, Karnataka, India", "li": "Bengaluru+Metropolitan+Area", "jsearch": "Bangalore, India", "country": "in"},
+    "delhi":     {"apify": "Delhi, India",                "li": "Delhi%2C+India",               "jsearch": "Delhi NCR, India",  "country": "in"},
 }
 
 app = Flask(__name__, static_folder=BASE_DIR, static_url_path="")
@@ -79,12 +79,20 @@ def debug_apify():
     if not APIFY_TOKEN:
         return jsonify({"error": "APIFY_TOKEN not set"}), 500
 
+    # Build a simple LinkedIn search URL for Bangalore software engineers (7 days for debug)
+    import urllib.parse
+    test_url = "https://www.linkedin.com/jobs/search/?" + urllib.parse.urlencode({
+        "keywords": "software engineer",
+        "location": "Bangalore, Karnataka, India",
+        "f_TPR": "r604800",
+        "f_JT": "F",
+        "position": "1",
+        "pageNum": "0",
+    })
     run_input = {
-        "title": "software engineer",
-        "location": "BANGALORE",
-        "contractType": "F",
-        "publishedAt": "r604800",   # widen to 7 days for debug
-        "rows": 10,
+        "startUrls": [{"url": test_url}],
+        "count": 5,
+        "scrapeCompany": False,
         "proxy": {
             "useApifyProxy": True,
             "apifyProxyGroups": ["RESIDENTIAL"],
@@ -223,28 +231,59 @@ def _do_search():
 
 
 # ------------------------------------------------------------------
-#  Apify
+#  Apify — curious_coder/linkedin-jobs-scraper
+#  Takes LinkedIn search URLs directly — most reliable approach
 # ------------------------------------------------------------------
-def _fetch_apify(keywords, experience, loc):
+def _build_linkedin_url(keywords, experience, loc):
+    """Build a LinkedIn jobs search URL with all filters baked in."""
+    import urllib.parse
     loc_cfg = LOCATIONS.get(loc, LOCATIONS["bangalore"])
-    run_input = {
-        "title": keywords,
+
+    # LinkedIn filter codes
+    # f_TPR: time posted (r172800 = 48h)
+    # f_JT:  job type (F = full-time)
+    # f_E:   experience level (1=internship,2=entry,3=associate,4=mid-senior,5=director,6=executive)
+    params = {
+        "keywords": keywords,
         "location": loc_cfg["apify"],
-        "contractType": "F",
-        "publishedAt": "r172800",
-        "rows": 50,
-        "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
+        "f_TPR": "r172800",
+        "f_JT": "F",
+        "position": "1",
+        "pageNum": "0",
     }
-    exp_map = {"entry": "2", "mid": "4", "senior": "4", "executive": "5"}
+    exp_map = {"entry": "2", "mid": "4", "senior": "4", "executive": "5,6"}
     if experience in exp_map:
-        run_input["experienceLevel"] = exp_map[experience]
+        params["f_E"] = exp_map[experience]
+
+    base = "https://www.linkedin.com/jobs/search/?"
+    return base + urllib.parse.urlencode(params)
+
+
+def _fetch_apify(keywords, experience, loc):
+    url = _build_linkedin_url(keywords, experience, loc)
+    run_input = {
+        "startUrls": [{"url": url}],
+        "count": 50,
+        "scrapeCompany": False,   # faster without company details
+        "proxy": {
+            "useApifyProxy": True,
+            "apifyProxyGroups": ["RESIDENTIAL"],
+        },
+    }
     try:
-        log.info(f"Apify: '{keywords}' in {loc_cfg['apify']}")
-        r = http_requests.post(APIFY_URL, params={"token": APIFY_TOKEN}, json=run_input,
-                               headers={"Content-Type": "application/json"}, timeout=120)
+        log.info(f"Apify curious_coder: '{keywords}' in {loc}")
+        log.info(f"LinkedIn URL: {url}")
+        r = http_requests.post(
+            APIFY_URL,
+            params={"token": APIFY_TOKEN},
+            json=run_input,
+            headers={"Content-Type": "application/json"},
+            timeout=120,
+        )
         r.raise_for_status()
         jobs = r.json()
-        return (jobs, None) if isinstance(jobs, list) else ([], "Bad format")
+        log.info(f"Apify returned {len(jobs) if isinstance(jobs, list) else 'non-list'} results")
+        return (jobs, None) if isinstance(jobs, list) else ([], f"Bad format: {str(jobs)[:200]}")
     except Exception as e:
         return [], str(e)
 
