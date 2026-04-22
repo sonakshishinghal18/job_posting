@@ -70,6 +70,65 @@ def index():
 def static_files(path):
     return send_from_directory(BASE_DIR, path)
 
+
+@app.route("/api/debug/apify")
+def debug_apify():
+    """Diagnostic endpoint — calls Apify directly and returns raw info.
+    Hit this in your browser: /api/debug/apify
+    """
+    if not APIFY_TOKEN:
+        return jsonify({"error": "APIFY_TOKEN not set"}), 500
+
+    run_input = {
+        "title": "software engineer",
+        "location": "BANGALORE",
+        "contractType": "F",
+        "publishedAt": "r604800",   # widen to 7 days for debug
+        "rows": 10,
+        "proxy": {
+            "useApifyProxy": True,
+            "apifyProxyGroups": ["RESIDENTIAL"],
+        },
+    }
+
+    try:
+        log.info("Debug: calling Apify…")
+        r = http_requests.post(
+            APIFY_URL,
+            params={"token": APIFY_TOKEN},
+            json=run_input,
+            headers={"Content-Type": "application/json"},
+            timeout=120,
+        )
+        status_code = r.status_code
+        try:
+            body = r.json()
+        except Exception:
+            body = r.text[:2000]
+
+        # If it's a list, summarise each item's keys so we can see the schema
+        if isinstance(body, list):
+            count = len(body)
+            sample = body[:2] if body else []
+            # Show all keys present in first item
+            keys = list(body[0].keys()) if body else []
+            return jsonify({
+                "ok": True,
+                "http_status": status_code,
+                "result_count": count,
+                "field_names": keys,
+                "first_2_jobs": sample,
+            })
+        else:
+            return jsonify({
+                "ok": False,
+                "http_status": status_code,
+                "raw_response": body,
+            })
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "apify": bool(APIFY_TOKEN), "jsearch": bool(RAPIDAPI_KEY), "llm": bool(ANTHROPIC_KEY)})
