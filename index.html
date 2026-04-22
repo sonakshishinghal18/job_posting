@@ -3,13 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Lumen — Bangalore Jobs, Last 48 Hours</title>
+<title>Lumen — Fresh Jobs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link
-  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@300;400;500;600;700&display=swap"
-  rel="stylesheet"
-/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -17,37 +14,25 @@
   <div class="grain"></div>
 
   <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">◐</span>
-      <span class="brand-name">Lumen</span>
-    </div>
+    <div class="brand"><span class="brand-mark">◐</span><span class="brand-name">Lumen</span></div>
     <div class="topbar-meta">
       <button type="button" id="resumeBtn" class="resume-btn">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 1h5l3 3v9a0 0 0 01 0 0H3a0 0 0 01 0 0V1a0 0 0 01 0 0z M8 1v3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 1h5l3 3v9H3V1z M8 1v3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span id="resumeBtnLabel">Add resume</span>
       </button>
-      <span class="pill">
-        <span class="pill-dot"></span>
-        Live · JSearch
-      </span>
+      <span class="pill"><span class="pill-dot"></span>Live</span>
     </div>
   </header>
 
   <main class="stage">
     <section class="hero">
       <div class="hero-label">№ 01 — Job Discovery</div>
-      <h1 class="hero-title">
-        Bangalore roles,<br />
-        <em>freshly</em> posted.
-      </h1>
-      <p class="hero-sub">
-        Full-time positions from the last 48 hours. Curated, quiet, and without the noise.
-      </p>
+      <h1 class="hero-title">India roles,<br /><em>freshly</em> posted.</h1>
+      <p class="hero-sub">Full-time positions from the last 48 hours. Curated, quiet, and without the noise.</p>
     </section>
 
     <section class="search-card">
       <div class="locked-row">
-        <span class="locked-chip"><span class="chip-key">Location</span>Bangalore, India</span>
         <span class="locked-chip"><span class="chip-key">Type</span>Full-time</span>
         <span class="locked-chip"><span class="chip-key">Posted</span>Within 48 hours</span>
       </div>
@@ -55,69 +40,71 @@
       <form id="searchForm" class="form">
         <div class="field field-main">
           <label for="query">Role or keywords</label>
-          <input
-            id="query"
-            name="query"
-            type="text"
-            placeholder="e.g. Senior Backend Engineer, React, Data Science"
-            autocomplete="off"
-          />
+          <input id="query" type="text" placeholder="e.g. Senior Backend Engineer, React, Data Science" autocomplete="off" />
+        </div>
+
+        <div class="field field-loc">
+          <label for="location">Location</label>
+          <div class="select-wrap">
+            <select id="location">
+              <option value="bangalore">Bangalore</option>
+              <option value="delhi">Delhi NCR</option>
+              <option value="both">Both</option>
+            </select>
+            <svg class="select-chev" width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
         </div>
 
         <div class="field field-exp">
           <label for="experience">Experience</label>
           <div class="select-wrap">
-            <select id="experience" name="experience">
+            <select id="experience">
               <option value="">Any level</option>
               <option value="entry">Entry (0–3 yrs)</option>
               <option value="mid">Mid (3–5 yrs)</option>
               <option value="senior">Senior (5+ yrs)</option>
               <option value="executive">Executive / Lead</option>
             </select>
-            <svg class="select-chev" width="12" height="8" viewBox="0 0 12 8" fill="none">
-              <path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+            <svg class="select-chev" width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
         </div>
 
         <button type="submit" class="search-btn" id="searchBtn">
           <span class="btn-label">Search</span>
-          <svg class="btn-arrow" width="18" height="14" viewBox="0 0 18 14" fill="none">
-            <path d="M1 7h15M10 1l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <svg class="btn-arrow" width="18" height="14" viewBox="0 0 18 14" fill="none"><path d="M1 7h15M10 1l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </form>
     </section>
 
+    <!-- Results meta + sort tabs -->
     <section class="results-meta" id="resultsMeta" hidden>
       <div class="meta-left">
         <span id="resultCount">—</span>
         <span class="meta-sep">·</span>
         <span id="resultContext">matches</span>
       </div>
-      <div class="meta-right">
-        <span>Page <span id="pageNum">1</span></span>
+      <div id="expandedQuery" class="expanded-query" hidden></div>
+      <div class="sort-tabs" id="sortTabs">
+        <button class="sort-tab active" data-sort="relevance">Relevance</button>
+        <button class="sort-tab" data-sort="date">Date</button>
+        <button class="sort-tab" data-sort="match" id="sortMatchTab" disabled title="Upload resume to enable">Match</button>
       </div>
+      <div class="meta-right"><span>Page <span id="pageNum">1</span></span></div>
     </section>
 
     <section class="grid" id="grid" aria-live="polite"></section>
-
     <section class="error-box" id="errorBox" hidden></section>
 
     <section class="pagination" id="pagination" hidden>
       <button id="prevBtn" class="page-btn" disabled>
-        <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M13 5H1M5 1L1 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Previous
+        <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M13 5H1M5 1L1 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Previous
       </button>
       <button id="nextBtn" class="page-btn">
-        Next
-        <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M9 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Next <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M9 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </section>
 
-    <footer class="footer">
-      <span>Powered by JSearch · RapidAPI · Claude Sonnet 4.6</span>
-    </footer>
+    <footer class="footer"><span>Powered by LinkedIn · JSearch · Claude Sonnet 4.6</span></footer>
   </main>
 
   <!-- DETAIL PANEL -->
@@ -131,16 +118,13 @@
 
   <!-- RESUME MODAL -->
   <div class="modal-scrim" id="modalScrim" hidden>
-    <div class="modal" role="dialog" aria-labelledby="modalTitle">
+    <div class="modal" role="dialog">
       <button class="modal-close" id="modalClose" aria-label="Close">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 1l14 14M15 1L1 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </button>
       <div class="modal-label">Your resume</div>
-      <h2 id="modalTitle" class="modal-title">Upload once — reuse anywhere.</h2>
-      <p class="modal-sub">
-        Your resume stays on this device (browser storage). It's sent to the server only when you click "Analyze match" on a job.
-      </p>
-
+      <h2 class="modal-title">Upload once — reuse anywhere.</h2>
+      <p class="modal-sub">Stored on your device only. Sent to the server only during analysis.</p>
       <div class="uploader" id="uploader">
         <input type="file" id="fileInput" accept=".pdf,.txt,.md" hidden />
         <div class="uploader-inner">
@@ -149,12 +133,8 @@
           <div class="uploader-sub">PDF, TXT, or MD · max 5 MB</div>
         </div>
       </div>
-
       <div class="modal-status" id="modalStatus" hidden></div>
-
-      <div class="modal-actions">
-        <button type="button" id="clearResumeBtn" class="ghost-btn" hidden>Clear saved resume</button>
-      </div>
+      <div class="modal-actions"><button type="button" id="clearResumeBtn" class="ghost-btn" hidden>Clear saved resume</button></div>
     </div>
   </div>
 
